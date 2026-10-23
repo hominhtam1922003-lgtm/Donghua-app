@@ -10,27 +10,26 @@
     app:strokeColor="#232329"
     app:strokeWidth="1dp">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
-        <!-- Poster dung NGUYEN ti le 2:3 cua web (300x450): truoc day
-             chieu cao co dinh 130dp lam khung gan vuong nen centerCrop
-             cat mat phan tren/duoi cua poster -->
+        <!-- Chieu cao poster do CODE dat theo dung ti le 2:3 cua web
+             (xem gridPosterHeightPx trong Adapters.kt). Ban 1.0.2 dung
+             ConstraintLayout + dimensionRatio trong RecyclerView lam
+             cac the bi do sai kich thuoc, chong len nhau; ban 1.0 dung
+             chieu cao co dinh 130dp thi cat mat phan tren poster. -->
         <ImageView
             android:id="@+id/ivCover"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
             android:contentDescription="Ảnh bìa"
-            android:scaleType="centerCrop"
-            app:layout_constraintDimensionRatio="2:3"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            android:scaleType="centerCrop" />
 
         <TextView
             android:id="@+id/tvTitle"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="2"
@@ -39,23 +38,16 @@
             android:paddingEnd="6dp"
             android:textColor="?attr/colorOnSurface"
             android:textSize="11sp"
-            android:textStyle="bold"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ivCover" />
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvLatest"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingStart="6dp"
             android:paddingEnd="6dp"
             android:paddingBottom="6dp"
             android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="9sp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tvTitle" />
-    </androidx.constraintlayout.widget.ConstraintLayout>
+            android:textSize="9sp" />
+    </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

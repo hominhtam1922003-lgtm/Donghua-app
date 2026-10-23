@@ -49,6 +49,8 @@ class ScheduleFragment : Fragment() {
                 object : RecyclerView.ViewHolder(v) {}
             } else {
                 val v = inf.inflate(R.layout.item_comic_grid, parent, false)
+                // fragment_schedule: chi co le danh sach 4dp x2
+                applyGridPosterHeight(v, 8)
                 object : RecyclerView.ViewHolder(v) {}
             }
         }

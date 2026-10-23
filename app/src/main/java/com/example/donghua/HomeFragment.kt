@@ -52,9 +52,9 @@ class HomeFragment : Fragment() {
                     inf.inflate(R.layout.item_section_header, parent, false)
                 ) {}
             } else {
-                object : RecyclerView.ViewHolder(
-                    inf.inflate(R.layout.item_comic_grid, parent, false)
-                ) {}
+                val v = inf.inflate(R.layout.item_comic_grid, parent, false)
+                applyGridPosterHeight(v, 28)
+                object : RecyclerView.ViewHolder(v) {}
             }
         }
 
