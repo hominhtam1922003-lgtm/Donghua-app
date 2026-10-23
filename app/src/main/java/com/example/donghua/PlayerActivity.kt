@@ -173,6 +173,11 @@ class PlayerActivity : AppCompatActivity() {
     private var candidates: List<Candidate> = emptyList()
     private var candidateIndex = 0
     private var errorToastShown = false
+
+    // Ban chieu nguoi dung da chon o man hinh chi tiet (vd "Vietsub").
+    // Viec tu nhay server khi loi chi duoc phep trong CUNG ban chieu
+    // nay — khong bao gio tu y dua nguoi xem sang ban chieu khac.
+    private var primaryVersion: String = ""
     // Danh dau moi lan doi ung vien: ket qua loc playlist (chay nen)
     // chi duoc ap dung neu chua doi sang ung vien khac
     private var playToken = 0
@@ -359,6 +364,8 @@ class PlayerActivity : AppCompatActivity() {
      * ngay; URL la (lich su cu cua nguon xua) thi bao ro, khong do nua.
      */
     private fun resolveAndPlay() {
+        primaryVersion = versionNameOf(watchUrl)
+            ?.substringBefore(" • ")?.trim() ?: ""
         progress.visibility = View.VISIBLE
         val path = watchUrl.substringBefore("?").lowercase()
         when {
@@ -671,6 +678,11 @@ class PlayerActivity : AppCompatActivity() {
                     // Luong o tang mang da on dinh (8 giay khong co
                     // luong moi): player da chot nguon -> phat
                     netCount > 0 && netQuiet && elapsed > 12000 -> finishProbe()
+                    // 20 giay khong thay bat ky luong nao: trang nay
+                    // khong lo nguon thang -> dung do som, phat bang
+                    // trang embed ngay khoi phai cho 45-50 giay
+                    elapsed > 20000 && netCount == 0 &&
+                        resHls.isEmpty() && resMp4.isEmpty() -> finishProbe()
                     elapsed > 45000 -> finishProbe()
                     else -> handler.postDelayed({ pollProbe() }, 2000)
                 }
@@ -775,23 +787,44 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    /** Khoa ban chieu cua 1 nguon phat: luong thang ke thua ban
+     * chieu chinh nguoi dung da chon; nguon embed lay tu nhan. */
+    private fun versionKeyOf(c: Candidate): String {
+        if (c.kind == Kind.HLS || c.kind == Kind.DIRECT) return primaryVersion
+        return c.label.substringBefore(" • ").trim()
+    }
+
     private fun nextCandidate(auto: Boolean) {
-        if (candidates.size <= 1) {
-            if (auto && !errorToastShown) {
+        if (auto) {
+            // Tu nhay CHI trong cung ban chieu: V1 -> V2 cua ban do,
+            // hoac luong thang -> trang embed cua chinh ban do. Het
+            // server trong ban thi bao loi, khong tu nhay sang ban khac.
+            if (candidates.size > 1) {
+                val curKey = versionKeyOf(candidates[candidateIndex])
+                val next = (1 until candidates.size)
+                    .map { (candidateIndex + it) % candidates.size }
+                    .firstOrNull { versionKeyOf(candidates[it]) == curKey }
+                if (next != null) {
+                    Toast.makeText(
+                        this, "Server lỗi, đang đổi server khác...",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    playCandidate(next)
+                    return
+                }
+            }
+            if (!errorToastShown) {
                 errorToastShown = true
                 Toast.makeText(
                     this,
-                    "Không phát được video. Thử lại sau hoặc đổi tập khác.",
+                    "Bản chiếu này đang lỗi. Bấm nút đổi bản để chọn bản chiếu khác nhé.",
                     Toast.LENGTH_LONG
                 ).show()
             }
             return
         }
-        val next = (candidateIndex + 1) % candidates.size
-        if (auto) {
-            Toast.makeText(this, "Server lỗi, đang đổi server khác...", Toast.LENGTH_SHORT).show()
-        }
-        playCandidate(next)
+        if (candidates.size <= 1) return
+        playCandidate((candidateIndex + 1) % candidates.size)
     }
 
     private fun hostOf(url: String): String = try {
