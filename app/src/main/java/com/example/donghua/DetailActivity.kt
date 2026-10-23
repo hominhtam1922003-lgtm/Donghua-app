@@ -162,6 +162,55 @@ class DetailActivity : AppCompatActivity() {
         }
         buildServerButtons(d)
         selectServer(0)
+        refreshResumeButton(d)
+    }
+
+    /**
+     * Nut "Xem tiep" nam duoi hang Xem ngay: chi hien khi phim nay
+     * da xem do dang (co tien do luu trong DbRepo) va tap do van con
+     * trong danh sach hien tai. Bam vao la phat lai dung tap do,
+     * nhay thang toi phut da xem (player tu seek).
+     */
+    private fun refreshResumeButton(d: MovieDetail) {
+        val btn = findViewById<com.google.android.material.button.MaterialButton>(
+            R.id.btnResume
+        )
+        val p = try {
+            db.progressFor(movieUrl)
+        } catch (e: Exception) {
+            null
+        }
+        if (p == null || p.epUrl.isEmpty() || p.posSec <= 3 ||
+            (p.durSec > 0 && p.posSec >= p.durSec * 0.95)
+        ) {
+            btn.visibility = android.view.View.GONE
+            return
+        }
+        var foundEp: Episode? = null
+        var foundGroup = -1
+        for ((gi, g) in d.servers.withIndex()) {
+            val e = g.episodes.firstOrNull { it.url == p.epUrl }
+            if (e != null) {
+                foundEp = e
+                foundGroup = gi
+                break
+            }
+        }
+        val ep = foundEp
+        if (ep == null) {
+            btn.visibility = android.view.View.GONE
+            return
+        }
+        val mm = (p.posSec / 60).toInt()
+        val ss = (p.posSec % 60).toInt()
+        btn.text = "▶ Xem tiếp: ${ep.name} • %d:%02d".format(mm, ss)
+        btn.visibility = android.view.View.VISIBLE
+        btn.setOnClickListener {
+            if (foundGroup >= 0 && foundGroup != currentServer) {
+                selectServer(foundGroup)
+            }
+            playEpisode(ep, p.posSec)
+        }
     }
 
     private fun buildServerButtons(d: MovieDetail) {
@@ -200,7 +249,7 @@ class DetailActivity : AppCompatActivity() {
      * nay); khong lay duoc nguon nao thi mo chinh trang xem cua web
      * trong trinh phat da khoa quang cao (du phong cuoi).
      */
-    private fun playEpisode(ep: Episode) {
+    private fun playEpisode(ep: Episode, startSec: Double = 0.0) {
         val d = detail ?: return
         db.addHistory(d.movie, ep.name, ep.url)
         findViewById<ProgressBar>(R.id.detailProgress).visibility = View.VISIBLE
@@ -237,6 +286,9 @@ class DetailActivity : AppCompatActivity() {
                 val i = Intent(this, PlayerActivity::class.java)
                 i.putExtra(PlayerActivity.EXTRA_TITLE, d.movie.title)
                 i.putExtra(PlayerActivity.EXTRA_EPISODE, ep.name)
+                if (startSec > 0) {
+                    i.putExtra(PlayerActivity.EXTRA_START_SEC, startSec)
+                }
                 // Danh sach tap cua nhom ban chieu dang chon: player
                 // dung de chuyen tap truoc/sau + mo hop chon tap nhanh
                 val groupEps = d.servers.getOrNull(currentServer)?.episodes

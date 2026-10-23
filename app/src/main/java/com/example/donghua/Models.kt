@@ -64,3 +64,18 @@ data class MovieHistoryItem(
     val episodeUrl: String,
     val watchedAt: Long
 )
+
+/** Tien do xem cua 1 phim (cho nut "Xem tiep"): tap dang xem do
+ * dang + vi tri phat gan nhat (giay). */
+data class WatchProgress(
+    val movieUrl: String,
+    val epName: String,
+    val epUrl: String,
+    val postId: Long,
+    val epKey: String,
+    val sv: Int,
+    val groupName: String,
+    val posSec: Double,
+    val durSec: Double,
+    val updatedAt: Long
+)

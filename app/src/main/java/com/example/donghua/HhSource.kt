@@ -112,8 +112,24 @@ object HhSource {
         }
     }
 
-    private fun getDoc(url: String): Document =
-        Jsoup.parse(httpText(url), url)
+    // Cache ngan 90 giay: chuyen tab/di lai chi tiet thi dung lai
+    // trang vua tai (mo gan nhu tuc thi), du lieu van du tuoi de
+    // phim moi cap nhat khong bi cham qua 1,5 phut
+    private val docCache =
+        java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Document>>()
+
+    private fun getDoc(url: String): Document {
+        val hit = docCache[url]
+        if (hit != null &&
+            System.currentTimeMillis() - hit.first < 90_000
+        ) {
+            return hit.second
+        }
+        val doc = Jsoup.parse(httpText(url), url)
+        if (docCache.size > 60) docCache.clear()
+        docCache[url] = System.currentTimeMillis() to doc
+        return doc
+    }
 
     // ---------------- The phim ----------------
 

@@ -58,6 +58,8 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_GROUP_NAME = "group_name"
         const val EXTRA_MOVIE_URL = "movie_url"
         const val EXTRA_MOVIE_POSTER = "movie_poster"
+        // Diem bat dau phat (giay) cho luot "Xem tiep"
+        const val EXTRA_START_SEC = "start_sec"
 
         // Do tim luong phat tren trang xem dang chay that: dia chi + THOI
         // LUONG cua the <video> + moi tai nguyen .m3u8/.mp4 trang da tai
@@ -140,6 +142,46 @@ class PlayerActivity : AppCompatActivity() {
      * vao man hinh thi hien lai. Thanh nay cua web chi tu an theo
      * chuot may tinh nen trong WebView dien thoai no dinh vinh vien.
      */
+    // Moc JS tiem vao MOI khung cua WebView phat (ke ca iframe
+    // embed cua web) ngay tu luc bat dau tai trang: (1) bao vi tri
+    // phat hien tai ve app moi 3 giay de luu tien do, (2) thay dau
+    // #museStart tren URL thi nhay toi dung giay do khi video san
+    // sang (co che "xem tiep"). PlayerBridge duoc Android tiem vao
+    // moi khung nen khung con goi thang duoc; khong co thi gui qua
+    // postMessage len trang boc (trang boc chuyen tiep ve bridge).
+    private val POS_HOOK_JS = """
+        (function(){
+          if (window.__museHook) return;
+          window.__museHook = true;
+          var seekDone = false;
+          function wantStart(){
+            try {
+              var m = /museStart=(\d+)/.exec(location.hash || '');
+              return m ? parseInt(m[1], 10) : 0;
+            } catch(e){ return 0; }
+          }
+          setInterval(function(){
+            try {
+              var v = document.querySelector('video');
+              if (!v || !(v.duration > 0)) return;
+              var want = wantStart();
+              if (want > 0 && !seekDone && v.currentTime < want - 2) {
+                try { v.currentTime = want; } catch(e){}
+                if (v.readyState >= 1) seekDone = true;
+              }
+              if (window.PlayerBridge) {
+                PlayerBridge.onProgress(v.currentTime || 0, v.duration || 0);
+              } else if (window.parent && window.parent !== window) {
+                window.parent.postMessage(
+                  {__musePos: true, t: v.currentTime || 0, d: v.duration || 0},
+                  '*');
+              }
+            } catch(e){}
+          }, 3000);
+          return 'ok';
+        })()
+    """.trimIndent()
+
     private val CHROME_JS = """
         (function(){
           if (window.__donghuaChrome) return 'ok';
@@ -211,6 +253,41 @@ class PlayerActivity : AppCompatActivity() {
     private var moviePageUrl: String = ""
     private var moviePoster: String = ""
     private val db by lazy { DbRepo(this) }
+
+    // Xem tiep: diem bat dau (giay) DetailActivity gui sang + vi tri
+    // phat moi nhat do JS bao ve; persistProgress ghi xuong DbRepo
+    private var startSec: Double = 0.0
+    @Volatile private var lastPosSec: Double = 0.0
+    @Volatile private var lastDurSec: Double = 0.0
+    @Volatile private var lastSaveAt: Long = 0
+
+    /** Diem se nhay toi khi (lai) phat 1 nguon: uu tien vi tri vua
+     * xem (doi server giua chung van tiep dung cho do), khong thi
+     * dung diem xem tiep tu man chi tiet. */
+    private fun effectiveStart(): Double =
+        if (lastPosSec > 3) lastPosSec else startSec
+
+    private fun persistProgress() {
+        val pos = lastPosSec
+        if (pos <= 3 || moviePageUrl.isEmpty()) return
+        val epName = epNames.getOrElse(epIndex) { "" }
+        val epUrl = epWatchUrls.getOrElse(epIndex) { "" }
+        if (epName.isEmpty() || epUrl.isEmpty()) return
+        try {
+            db.saveProgress(
+                WatchProgress(
+                    moviePageUrl, epName, epUrl,
+                    epPostIds.getOrElse(epIndex) { 0L },
+                    epKeys.getOrElse(epIndex) { "" },
+                    epSvs.getOrElse(epIndex) { 0 },
+                    groupName, pos, lastDurSec,
+                    System.currentTimeMillis()
+                )
+            )
+        } catch (e: Exception) {
+            // Luu tien do la phu: loi thi bo qua
+        }
+    }
     // Danh dau moi lan doi ung vien: ket qua loc playlist (chay nen)
     // chi duoc ap dung neu chua doi sang ung vien khac
     private var playToken = 0
@@ -253,7 +330,11 @@ class PlayerActivity : AppCompatActivity() {
      */
     private fun loadEpisode(index: Int) {
         if (index < 0 || index >= epNames.size || index == epIndex) return
+        persistProgress()
         epIndex = index
+        lastPosSec = 0.0
+        lastDurSec = 0.0
+        startSec = 0.0
         refreshEpButtons()
         val ep = Episode(
             epNames[index],
@@ -389,6 +470,7 @@ class PlayerActivity : AppCompatActivity() {
         groupName = intent.getStringExtra(EXTRA_GROUP_NAME) ?: ""
         moviePageUrl = intent.getStringExtra(EXTRA_MOVIE_URL) ?: ""
         moviePoster = intent.getStringExtra(EXTRA_MOVIE_POSTER) ?: ""
+        startSec = intent.getDoubleExtra(EXTRA_START_SEC, 0.0)
         val epName = intent.getStringExtra(EXTRA_EPISODE) ?: ""
         title = if (epName.isNotEmpty()) "$movieTitle - $epName" else movieTitle
 
@@ -428,6 +510,17 @@ class PlayerActivity : AppCompatActivity() {
             @JavascriptInterface
             fun onError() {
                 runOnUiThread { nextCandidate(auto = true) }
+            }
+
+            @JavascriptInterface
+            fun onProgress(t: Double, d: Double) {
+                lastPosSec = t
+                lastDurSec = d
+                val now = System.currentTimeMillis()
+                if (now - lastSaveAt > 5000) {
+                    lastSaveAt = now
+                    persistProgress()
+                }
             }
         }, "PlayerBridge")
 
@@ -503,11 +596,27 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
+        // Cai moc bao tien do + nhay diem xem tiep vao moi khung
+        // (phai cai TRUOC khi tai trang phat dau tien). WebView cu
+        // khong ho tro thi bo qua: van xem tiep duoc o muc do tap.
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT
+                )
+            ) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                    webView, POS_HOOK_JS, setOf("*")
+                )
+            }
+        } catch (e: Exception) {
+            // Bo qua
+        }
+
         resolveAndPlay()
     }
 
     /** Trang noi bo phat file video truc tiep (.mp4) bang the video chuan. */
-    private fun directHtml(src0: String): String {
+    private fun directHtml(src0: String, startAt: Double = 0.0): String {
         val src = src0.replace("\\", "\\\\").replace("\"", "\\\"")
         return """
             <!DOCTYPE html>
@@ -518,9 +627,22 @@ class PlayerActivity : AppCompatActivity() {
             <video id="v" controls autoplay playsinline src="$src"></video>
             <script>
               var v = document.getElementById('v');
+              var startAt = $startAt;
+              var seeked = false;
+              v.addEventListener('loadedmetadata', function(){
+                if (startAt > 0 && !seeked) {
+                  seeked = true;
+                  try { v.currentTime = startAt; } catch(e){}
+                }
+              });
               v.addEventListener('error', function(){
                 if (window.PlayerBridge) { PlayerBridge.onError(); }
               });
+              setInterval(function(){
+                if (window.PlayerBridge && v.duration > 0) {
+                  PlayerBridge.onProgress(v.currentTime || 0, v.duration || 0);
+                }
+              }, 3000);
             </script>
             </body></html>
         """.trimIndent()
@@ -602,8 +724,11 @@ class PlayerActivity : AppCompatActivity() {
      * Base URL cua trang boc dat la goc web hhkungfu nen iframe thua
      * huong dung ngu canh (Referer/origin) cua web goc.
      */
-    private fun embedWrapperHtml(embedUrl: String): String {
-        val src = embedUrl.replace("&", "&amp;").replace("\"", "&quot;")
+    private fun embedWrapperHtml(embedUrl: String, startAt: Double = 0.0): String {
+        val withHash =
+            if (startAt > 0) embedUrl + "#museStart=" + startAt.toInt()
+            else embedUrl
+        val src = withHash.replace("&", "&amp;").replace("\"", "&quot;")
         return """
             <!DOCTYPE html>
             <html><head>
@@ -615,6 +740,16 @@ class PlayerActivity : AppCompatActivity() {
             </style>
             </head><body>
             <iframe src="$src" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+            <script>
+              // Chuyen tiep bao vi tri phat tu iframe embed len bridge
+              // cua app (khi khung con khong goi thang bridge duoc)
+              window.addEventListener('message', function(e){
+                var d = e.data;
+                if (d && d.__musePos && window.PlayerBridge) {
+                  PlayerBridge.onProgress(d.t || 0, d.d || 0);
+                }
+              });
+            </script>
             </body></html>
         """.trimIndent()
     }
@@ -934,7 +1069,7 @@ class PlayerActivity : AppCompatActivity() {
                 // cam, AdBlock chan o tang mang.
                 targetHost = ""
                 webView.loadDataWithBaseURL(
-                    HhSource.BASE + "/", embedWrapperHtml(c.url),
+                    HhSource.BASE + "/", embedWrapperHtml(c.url, effectiveStart()),
                     "text/html", "utf-8", null
                 )
                 // Cai lai co che an thanh ten phim sau khi trang on
@@ -968,7 +1103,7 @@ class PlayerActivity : AppCompatActivity() {
                         if (token == playToken && !isFinishing) {
                             webView.loadDataWithBaseURL(
                                 HhSource.BASE + "/",
-                                hlsHtml(res.playUrl, res.overrideText),
+                                hlsHtml(res.playUrl, res.overrideText, effectiveStart()),
                                 "text/html", "utf-8", null
                             )
                         }
@@ -978,7 +1113,7 @@ class PlayerActivity : AppCompatActivity() {
             Kind.DIRECT -> {
                 targetHost = ""
                 webView.loadDataWithBaseURL(
-                    HhSource.BASE + "/", directHtml(c.url), "text/html", "utf-8", null
+                    HhSource.BASE + "/", directHtml(c.url, effectiveStart()), "text/html", "utf-8", null
                 )
             }
         }
@@ -1036,7 +1171,7 @@ class PlayerActivity : AppCompatActivity() {
      * PlaylistCleaner cat quang cao ghep), nap playlist tu blob noi
      * dung do thay vi tu URL goc.
      */
-    private fun hlsHtml(m3u8: String, overrideText: String?): String {
+    private fun hlsHtml(m3u8: String, overrideText: String?, startAt: Double = 0.0): String {
         val src = m3u8.replace("\\", "\\\\").replace("\"", "\\\"")
         val overrideJs = if (overrideText != null) {
             "var pl = " + org.json.JSONObject.quote(overrideText) + ";" +
@@ -1055,6 +1190,20 @@ class PlayerActivity : AppCompatActivity() {
             <video id="v" controls autoplay playsinline></video>
             <script>
               var v = document.getElementById('v');
+              var startAt = $startAt;
+              var seeked = false;
+              function trySeek(){
+                if (seeked || startAt <= 0 || !(v.duration > 0)) return;
+                seeked = true;
+                try { v.currentTime = startAt; } catch(e){}
+              }
+              v.addEventListener('loadedmetadata', trySeek);
+              v.addEventListener('canplay', trySeek);
+              setInterval(function(){
+                if (window.PlayerBridge && v.duration > 0) {
+                  PlayerBridge.onProgress(v.currentTime || 0, v.duration || 0);
+                }
+              }, 3000);
               var src = "$src";
               $overrideJs
               function fail(){ if (window.PlayerBridge) { PlayerBridge.onError(); } }
@@ -1083,6 +1232,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        persistProgress()
         super.onPause()
         try {
             webView.onPause()
@@ -1101,6 +1251,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        persistProgress()
         try {
             webView.stopLoading()
             webView.destroy()

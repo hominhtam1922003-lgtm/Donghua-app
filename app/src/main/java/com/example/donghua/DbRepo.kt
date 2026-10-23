@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /** Luu local: phim yeu thich + lich su xem (SQLite, khong can dang nhap). */
 class DbRepo(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "tophim.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "tophim.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -20,12 +20,23 @@ class DbRepo(context: Context) :
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, movie_url TEXT, title TEXT, poster TEXT, " +
                 "episode_name TEXT, episode_url TEXT, watched_at INTEGER)"
         )
+        db.execSQL(CREATE_PROGRESS)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS favorites")
-        db.execSQL("DROP TABLE IF EXISTS history")
-        onCreate(db)
+        // v2: them bang progress (xem tiep). GIU NGUYEN yeu thich +
+        // lich su cua nguoi dung — khong drop bang nhu truoc nua.
+        if (oldVersion < 2) {
+            db.execSQL(CREATE_PROGRESS.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"))
+        }
+    }
+
+    companion object {
+        private const val CREATE_PROGRESS =
+            "CREATE TABLE progress(" +
+                "movie_url TEXT PRIMARY KEY, ep_name TEXT, ep_url TEXT, " +
+                "post_id INTEGER, ep_key TEXT, sv INTEGER, group_name TEXT, " +
+                "pos_sec REAL, dur_sec REAL, updated_at INTEGER)"
     }
 
     // ---------- Yeu thich ----------
@@ -86,6 +97,46 @@ class DbRepo(context: Context) :
             put("watched_at", System.currentTimeMillis())
         }
         writableDatabase.insert("history", null, v)
+    }
+
+    // ---------- Tien do xem (xem tiep dung tap, dung phut) ----------
+
+    fun saveProgress(p: WatchProgress) {
+        val v = ContentValues().apply {
+            put("movie_url", p.movieUrl)
+            put("ep_name", p.epName)
+            put("ep_url", p.epUrl)
+            put("post_id", p.postId)
+            put("ep_key", p.epKey)
+            put("sv", p.sv)
+            put("group_name", p.groupName)
+            put("pos_sec", p.posSec)
+            put("dur_sec", p.durSec)
+            put("updated_at", p.updatedAt)
+        }
+        writableDatabase.insertWithOnConflict(
+            "progress", null, v, SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
+
+    fun progressFor(movieUrl: String): WatchProgress? {
+        val c = readableDatabase.rawQuery(
+            "SELECT ep_name, ep_url, post_id, ep_key, sv, group_name, " +
+                "pos_sec, dur_sec, updated_at FROM progress WHERE movie_url=?",
+            arrayOf(movieUrl)
+        )
+        val r = if (c.moveToFirst()) {
+            WatchProgress(
+                movieUrl, c.getString(0) ?: "", c.getString(1) ?: "",
+                c.getLong(2), c.getString(3) ?: "", c.getInt(4),
+                c.getString(5) ?: "", c.getDouble(6), c.getDouble(7),
+                c.getLong(8)
+            )
+        } else {
+            null
+        }
+        c.close()
+        return r
     }
 
     fun historyGrouped(): List<MovieHistoryItem> {

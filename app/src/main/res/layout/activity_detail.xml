@@ -71,6 +71,16 @@
             android:text="▶ Xem ngay" />
     </LinearLayout>
 
+    <!-- Xem tiep dung tap + dung phut da xem (chi hien khi co
+         tien do da luu); DetailActivity do du lieu + gan su kien -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnResume"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="▶ Xem tiếp"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/tvServerLabel"
         android:layout_width="match_parent"
