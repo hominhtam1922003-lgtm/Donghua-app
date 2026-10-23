@@ -53,7 +53,7 @@ class BrowseFragment : Fragment() {
         title = arguments?.getString("title") ?: ""
         path = arguments?.getString("path") ?: "/moi-cap-nhat"
         val v = inflater.inflate(R.layout.fragment_home, container, false)
-        v.findViewById<View>(R.id.etSearch).visibility = View.GONE
+        v.findViewById<View>(R.id.tilSearch).visibility = View.GONE
         v.findViewById<View>(R.id.btnVerify).visibility = View.GONE
         val tvTitle = v.findViewById<android.widget.TextView>(R.id.tvBrowseTitle)
         if (title.isNotEmpty()) {
@@ -64,6 +64,8 @@ class BrowseFragment : Fragment() {
         swipe = v.findViewById(R.id.swipeRefresh)
         val rv = v.findViewById<RecyclerView>(R.id.rvComics)
         rv.layoutManager = GridLayoutManager(requireContext(), 3)
+        rv.itemAnimator = null
+        rv.setHasFixedSize(true)
         adapter = MovieGridAdapter(emptyList()) { openDetail(it) }
         rv.adapter = adapter
         btnLoadMore = v.findViewById(R.id.btnLoadMore)

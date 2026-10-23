@@ -102,6 +102,7 @@ class ScheduleFragment : Fragment() {
                 if (adapter.getItemViewType(position) == 0) 3 else 1
         }
         rv.layoutManager = lm
+        rv.itemAnimator = null
         adapter = ScheduleAdapter(emptyList())
         rv.adapter = adapter
 

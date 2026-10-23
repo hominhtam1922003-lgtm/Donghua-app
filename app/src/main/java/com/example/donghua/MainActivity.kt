@@ -100,7 +100,7 @@ class MainActivity : AppCompatActivity() {
     private fun show(fragment: Fragment) {
         supportFragmentManager.beginTransaction()
             .replace(R.id.container, fragment)
-            .commit()
+            .commitNow()
     }
 
     fun ensureNotificationPermission() {

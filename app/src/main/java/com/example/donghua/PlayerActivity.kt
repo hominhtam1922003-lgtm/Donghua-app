@@ -4,6 +4,10 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
+import android.view.LayoutInflater
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.GridLayoutManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -43,6 +47,17 @@ class PlayerActivity : AppCompatActivity() {
         // DetailActivity gui kem de doi ban ngay trong player
         const val EXTRA_SERVER_NAMES = "server_names"
         const val EXTRA_SERVER_URLS = "server_urls"
+        // Danh sach tap cua nhom ban chieu dang xem (DetailActivity gui
+        // kem): player dung de chuyen tap truoc/sau + chon tap nhanh
+        const val EXTRA_EP_NAMES = "ep_names"
+        const val EXTRA_EP_URLS = "ep_urls"
+        const val EXTRA_EP_KEYS = "ep_keys"
+        const val EXTRA_EP_POSTIDS = "ep_postids"
+        const val EXTRA_EP_SVS = "ep_svs"
+        const val EXTRA_EP_INDEX = "ep_index"
+        const val EXTRA_GROUP_NAME = "group_name"
+        const val EXTRA_MOVIE_URL = "movie_url"
+        const val EXTRA_MOVIE_POSTER = "movie_poster"
 
         // Do tim luong phat tren trang xem dang chay that: dia chi + THOI
         // LUONG cua the <video> + moi tai nguyen .m3u8/.mp4 trang da tai
@@ -178,6 +193,24 @@ class PlayerActivity : AppCompatActivity() {
     // Viec tu nhay server khi loi chi duoc phep trong CUNG ban chieu
     // nay — khong bao gio tu y dua nguoi xem sang ban chieu khac.
     private var primaryVersion: String = ""
+
+    // Dieu huong tap ngay trong player (DetailActivity gui kem danh
+    // sach tap cua nhom ban chieu dang xem)
+    private lateinit var epBar: android.widget.LinearLayout
+    private lateinit var btnPrevEp: Button
+    private lateinit var btnNextEp: Button
+    private lateinit var btnEpList: Button
+    private var epNames: List<String> = emptyList()
+    private var epWatchUrls: List<String> = emptyList()
+    private var epKeys: List<String> = emptyList()
+    private var epPostIds: LongArray = LongArray(0)
+    private var epSvs: IntArray = IntArray(0)
+    private var epIndex: Int = 0
+    private var groupName: String = ""
+    private var movieTitle: String = ""
+    private var moviePageUrl: String = ""
+    private var moviePoster: String = ""
+    private val db by lazy { DbRepo(this) }
     // Danh dau moi lan doi ung vien: ket qua loc playlist (chay nen)
     // chi duoc ap dung neu chua doi sang ung vien khac
     private var playToken = 0
@@ -187,14 +220,133 @@ class PlayerActivity : AppCompatActivity() {
     /** Nut doi server: hien roi tu an sau 3,5 giay; cham man hinh hien lai. */
     private fun showServerButton() {
         hideServerRunnable?.let { chromeHandler.removeCallbacks(it) }
-        if (candidates.size <= 1 || customView != null) {
+        if (customView != null || !::epBar.isInitialized) {
             btnServer.visibility = View.GONE
+            if (::epBar.isInitialized) epBar.visibility = View.GONE
             return
         }
-        btnServer.visibility = View.VISIBLE
-        val r = Runnable { btnServer.visibility = View.GONE }
+        btnServer.visibility =
+            if (candidates.size > 1) View.VISIBLE else View.GONE
+        epBar.visibility =
+            if (epNames.size > 1) View.VISIBLE else View.GONE
+        val r = Runnable {
+            btnServer.visibility = View.GONE
+            epBar.visibility = View.GONE
+        }
         hideServerRunnable = r
         chromeHandler.postDelayed(r, 3500)
+    }
+
+    /** Cap nhat trang thai 2 nut chuyen tap (mo di o 2 dau danh sach). */
+    private fun refreshEpButtons() {
+        if (!::btnPrevEp.isInitialized) return
+        btnPrevEp.isEnabled = epIndex > 0
+        btnPrevEp.alpha = if (epIndex > 0) 0.85f else 0.35f
+        btnNextEp.isEnabled = epIndex < epNames.size - 1
+        btnNextEp.alpha = if (epIndex < epNames.size - 1) 0.85f else 0.35f
+    }
+
+    /**
+     * Chuyen sang tap khac NGAY trong player, giu nguyen ban chieu
+     * dang xem: lay nguon phat cua tap moi (ca 2 server V1/V2 cua ban
+     * do) roi phat lai tu dau. Khong phai quay ve man hinh chi tiet.
+     */
+    private fun loadEpisode(index: Int) {
+        if (index < 0 || index >= epNames.size || index == epIndex) return
+        epIndex = index
+        refreshEpButtons()
+        val ep = Episode(
+            epNames[index],
+            epWatchUrls.getOrElse(index) { "" },
+            epPostIds.getOrElse(index) { 0L },
+            epKeys.getOrElse(index) { "" },
+            epSvs.getOrElse(index) { 0 }
+        )
+        if (moviePageUrl.isNotEmpty()) {
+            try {
+                db.addHistory(
+                    Movie(movieTitle, moviePageUrl, moviePoster, ""),
+                    ep.name, ep.url
+                )
+            } catch (e: Exception) {
+                // Lich su la phu: loi thi bo qua, phat phim la chinh
+            }
+        }
+        title = if (ep.name.isNotEmpty()) "$movieTitle - ${ep.name}" else movieTitle
+        Toast.makeText(this, "Đang chuyển sang ${ep.name}...", Toast.LENGTH_SHORT).show()
+        progress.visibility = View.VISIBLE
+        thread {
+            val resolved = ArrayList<Pair<String, String>>()
+            for ((type, label) in HhSource.PLAYER_TYPES) {
+                val u = try {
+                    HhSource.resolveEmbed(ep, type)
+                } catch (e: Exception) {
+                    ""
+                }
+                if (u.isNotEmpty()) resolved.add("$groupName • $label" to u)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                errorToastShown = false
+                candidates = emptyList()
+                candidateIndex = 0
+                if (resolved.isNotEmpty()) {
+                    versionNames = resolved.map { it.first }
+                    versionUrls = resolved.map { it.second }
+                    watchUrl = resolved[0].second
+                } else {
+                    versionNames = listOf(groupName)
+                    versionUrls = listOf(ep.url)
+                    watchUrl = ep.url
+                }
+                try { webView.stopLoading() } catch (e: Exception) { }
+                resolveAndPlay()
+                showServerButton()
+            }
+        }
+    }
+
+    /** Hop chon tap nhanh: luoi cac tap cua ban chieu dang xem. */
+    private fun showEpisodePicker() {
+        if (epNames.isEmpty()) return
+        val rv = RecyclerView(this)
+        rv.layoutManager = GridLayoutManager(this, 4)
+        rv.itemAnimator = null
+        rv.setPadding(24, 24, 24, 24)
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Chọn tập")
+            .setView(rv)
+            .setNegativeButton("Đóng", null)
+            .create()
+        rv.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun onCreateViewHolder(
+                parent: ViewGroup, viewType: Int
+            ): RecyclerView.ViewHolder {
+                val v = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_episode, parent, false)
+                return object : RecyclerView.ViewHolder(v) {}
+            }
+
+            override fun getItemCount(): Int = epNames.size
+
+            override fun onBindViewHolder(h: RecyclerView.ViewHolder, pos: Int) {
+                val tv = h.itemView.findViewById<TextView>(R.id.tvEpisode)
+                tv.text = epNames[pos]
+                if (pos == epIndex) {
+                    tv.setBackgroundColor(0xFFE50914.toInt())
+                    tv.setTextColor(0xFFFFFFFF.toInt())
+                } else {
+                    tv.setBackgroundColor(0x00000000)
+                    tv.setTextColor(0xFFF4F4F6.toInt())
+                }
+                h.itemView.setOnClickListener {
+                    dlg.dismiss()
+                    loadEpisode(pos)
+                }
+            }
+        }
+        dlg.show()
+        (rv.layoutManager as? GridLayoutManager)?.scrollToPosition(epIndex)
     }
 
     private fun cancelServerHide() {
@@ -227,13 +379,30 @@ class PlayerActivity : AppCompatActivity() {
         )
         versionUrls = intent.getStringArrayListExtra(EXTRA_SERVER_URLS) ?: emptyList()
         versionNames = intent.getStringArrayListExtra(EXTRA_SERVER_NAMES) ?: emptyList()
-        val movieTitle = intent.getStringExtra(EXTRA_TITLE) ?: ""
+        movieTitle = intent.getStringExtra(EXTRA_TITLE) ?: ""
+        epNames = intent.getStringArrayListExtra(EXTRA_EP_NAMES) ?: emptyList()
+        epWatchUrls = intent.getStringArrayListExtra(EXTRA_EP_URLS) ?: emptyList()
+        epKeys = intent.getStringArrayListExtra(EXTRA_EP_KEYS) ?: emptyList()
+        epPostIds = intent.getLongArrayExtra(EXTRA_EP_POSTIDS) ?: LongArray(0)
+        epSvs = intent.getIntArrayExtra(EXTRA_EP_SVS) ?: IntArray(0)
+        epIndex = intent.getIntExtra(EXTRA_EP_INDEX, 0)
+        groupName = intent.getStringExtra(EXTRA_GROUP_NAME) ?: ""
+        moviePageUrl = intent.getStringExtra(EXTRA_MOVIE_URL) ?: ""
+        moviePoster = intent.getStringExtra(EXTRA_MOVIE_POSTER) ?: ""
         val epName = intent.getStringExtra(EXTRA_EPISODE) ?: ""
         title = if (epName.isNotEmpty()) "$movieTitle - $epName" else movieTitle
 
         progress = findViewById(R.id.playerProgress)
         btnServer = findViewById(R.id.btnServer)
         btnServer.setOnClickListener { nextCandidate(auto = false) }
+        epBar = findViewById(R.id.epBar)
+        btnPrevEp = findViewById(R.id.btnPrevEp)
+        btnNextEp = findViewById(R.id.btnNextEp)
+        btnEpList = findViewById(R.id.btnEpList)
+        btnPrevEp.setOnClickListener { loadEpisode(epIndex - 1) }
+        btnNextEp.setOnClickListener { loadEpisode(epIndex + 1) }
+        btnEpList.setOnClickListener { showEpisodePicker() }
+        refreshEpButtons()
         webView = findViewById(R.id.wvPlayer)
         with(webView.settings) {
             javaScriptEnabled = true

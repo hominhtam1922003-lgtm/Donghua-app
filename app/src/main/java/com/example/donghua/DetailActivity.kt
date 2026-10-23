@@ -76,6 +76,8 @@ class DetailActivity : AppCompatActivity() {
 
         rvEpisodes = findViewById(R.id.rvChapters)
         rvEpisodes.layoutManager = GridLayoutManager(this, 4)
+        rvEpisodes.itemAnimator = null
+        rvEpisodes.setHasFixedSize(true)
         epAdapter = EpisodeAdapter(emptyList())
         rvEpisodes.adapter = epAdapter
 
@@ -235,6 +237,37 @@ class DetailActivity : AppCompatActivity() {
                 val i = Intent(this, PlayerActivity::class.java)
                 i.putExtra(PlayerActivity.EXTRA_TITLE, d.movie.title)
                 i.putExtra(PlayerActivity.EXTRA_EPISODE, ep.name)
+                // Danh sach tap cua nhom ban chieu dang chon: player
+                // dung de chuyen tap truoc/sau + mo hop chon tap nhanh
+                val groupEps = d.servers.getOrNull(currentServer)?.episodes
+                    ?: emptyList()
+                val epIdx = groupEps.indexOfFirst { it.url == ep.url }
+                if (groupEps.size > 1 && epIdx >= 0) {
+                    i.putStringArrayListExtra(
+                        PlayerActivity.EXTRA_EP_NAMES,
+                        ArrayList(groupEps.map { it.name })
+                    )
+                    i.putStringArrayListExtra(
+                        PlayerActivity.EXTRA_EP_URLS,
+                        ArrayList(groupEps.map { it.url })
+                    )
+                    i.putStringArrayListExtra(
+                        PlayerActivity.EXTRA_EP_KEYS,
+                        ArrayList(groupEps.map { it.epKey })
+                    )
+                    i.putExtra(
+                        PlayerActivity.EXTRA_EP_POSTIDS,
+                        groupEps.map { it.postId }.toLongArray()
+                    )
+                    i.putExtra(
+                        PlayerActivity.EXTRA_EP_SVS,
+                        groupEps.map { it.sv }.toIntArray()
+                    )
+                    i.putExtra(PlayerActivity.EXTRA_EP_INDEX, epIdx)
+                    i.putExtra(PlayerActivity.EXTRA_GROUP_NAME, curGroup)
+                    i.putExtra(PlayerActivity.EXTRA_MOVIE_URL, d.movie.url)
+                    i.putExtra(PlayerActivity.EXTRA_MOVIE_POSTER, d.movie.poster)
+                }
                 if (ok.isNotEmpty()) {
                     // Nhan cua tung nguon nam trong danh sach kem theo;
                     // PlayerActivity tu doi chieu URL dang phat de biet

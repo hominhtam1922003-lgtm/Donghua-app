@@ -126,6 +126,7 @@ class HomeFragment : Fragment() {
                 if (adapter.getItemViewType(position) == 0) 3 else 1
         }
         rv.layoutManager = glm
+        rv.itemAnimator = null
         adapter = HomeAdapter(emptyList())
         rv.adapter = adapter
 

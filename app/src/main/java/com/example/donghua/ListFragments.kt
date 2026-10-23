@@ -31,6 +31,7 @@ class FavoritesFragment : Fragment() {
         tv.visibility = if (favs.isEmpty()) View.VISIBLE else View.GONE
         tv.text = "Chưa có phim yêu thích.\nMở một phim và bấm nút Yêu thích."
         rv.layoutManager = LinearLayoutManager(requireContext())
+        rv.itemAnimator = null
         rv.adapter = MovieRowAdapter(
             favs.map { it.first },
             favs.associate { it.first.url to "Tổng số tập đã có: ${it.second}" }
@@ -63,6 +64,7 @@ class HistoryFragment : Fragment() {
         tv.text = "Chưa xem phim nào."
         val fmt = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
         rv.layoutManager = LinearLayoutManager(requireContext())
+        rv.itemAnimator = null
         rv.adapter = MovieRowAdapter(
             items.map { Movie(it.title, it.movieUrl, it.poster) },
             items.associate {
