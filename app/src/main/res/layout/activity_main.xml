@@ -10,7 +10,7 @@
         android:layout_height="?attr/actionBarSize"
         android:background="#060608"
         app:title="Donghua"
-        app:subtitle="v1.0.5"
+        app:subtitle="v1.0.6"
         app:subtitleTextColor="#A8A8B3"
         app:titleTextColor="#FFFFFF"
         xmlns:app="http://schemas.android.com/apk/res-auto" />

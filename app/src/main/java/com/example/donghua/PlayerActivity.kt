@@ -336,7 +336,7 @@ class PlayerActivity : AppCompatActivity() {
                     tv.setBackgroundColor(0xFFE50914.toInt())
                     tv.setTextColor(0xFFFFFFFF.toInt())
                 } else {
-                    tv.setBackgroundColor(0x00000000)
+                    tv.setBackgroundResource(R.drawable.bg_episode)
                     tv.setTextColor(0xFFF4F4F6.toInt())
                 }
                 h.itemView.setOnClickListener {
@@ -546,7 +546,35 @@ class PlayerActivity : AppCompatActivity() {
                 candidates = listOf(Candidate(Kind.DIRECT, watchUrl, "Luồng trực tiếp"))
                 playCandidate(0)
             }
-            watchUrl.contains("/embed/") -> probeRuntime()
+            watchUrl.contains("/embed/") -> {
+                // PHAT THANG trang embed ngay nhu tren web, KHONG do
+                // tim luong nua: streamfree khoa nguon bang token nen
+                // buoc do gan nhu khong bao gio bat duoc luong thang,
+                // chi lam nguoi xem cho them 20-45 giay (user phan anh
+                // "tren web an tap la coi lien"). Moi ban chieu thanh
+                // 1 ung vien embed, phat ngay ung vien chinh.
+                val list = ArrayList<Candidate>()
+                if (versionUrls.isNotEmpty()) {
+                    for (i in versionUrls.indices) {
+                        list.add(
+                            Candidate(
+                                Kind.EMBEDPAGE, versionUrls[i],
+                                versionNames.getOrElse(i) { "" }
+                            )
+                        )
+                    }
+                } else {
+                    list.add(
+                        Candidate(
+                            Kind.EMBEDPAGE, watchUrl,
+                            versionNameOf(watchUrl) ?: ""
+                        )
+                    )
+                }
+                candidates = list
+                val startIdx = list.indexOfFirst { it.url == watchUrl }
+                playCandidate(if (startIdx >= 0) startIdx else 0)
+            }
             watchUrl.contains("/watch-") -> {
                 // Du phong cuoi (DetailActivity khong lay duoc nguon
                 // embed nao): phat bang CHINH trang xem cua web —

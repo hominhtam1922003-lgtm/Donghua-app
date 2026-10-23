@@ -85,6 +85,12 @@ class HomeFragment : Fragment() {
 
     private lateinit var adapter: HomeAdapter
     private var homeItems: List<HomeItem> = emptyList()
+    // Phan trang cua muc "Moi cap nhat" ngay o trang chu: nut
+    // "Tai them phim" cuon trang chu phai tai tiep duoc nhu cac tab,
+    // khong dung lai o 3 muc x trang 1 (~39 phim) nhu truoc
+    private var homePage = 1
+    private var homeTotalPages = 1
+    private var homeLoadingMore = false
     private val searchMovies = ArrayList<Movie>()
     private var loading = false
 
@@ -115,7 +121,9 @@ class HomeFragment : Fragment() {
         btnLoadMore = v.findViewById(R.id.btnLoadMore)
         btnLoadMore.text = "Tải thêm phim"
         btnLoadMore.visibility = View.GONE
-        btnLoadMore.setOnClickListener { loadMoreSearch() }
+        btnLoadMore.setOnClickListener {
+            if (searching) loadMoreSearch() else loadMoreHome()
+        }
         v.findViewById<View>(R.id.btnVerify).visibility = View.GONE
         tvLoadError = v.findViewById(R.id.tvLoadError)
 
@@ -143,7 +151,9 @@ class HomeFragment : Fragment() {
                     // Xoa o tim kiem -> quay lai cac muc trang chu
                     searchGeneration++
                     searching = false
-                    btnLoadMore.visibility = View.GONE
+                    btnLoadMore.visibility =
+                        if (homePage < homeTotalPages) View.VISIBLE
+                        else View.GONE
                     adapter.submit(homeItems)
                     return
                 }
@@ -189,7 +199,10 @@ class HomeFragment : Fragment() {
             var sections: List<HomeSection> = emptyList()
             var hot: List<Movie> = emptyList()
             try {
-                sections = HhSource.fetchHomeSections()
+                val res = HhSource.fetchHomeSections()
+                sections = res.first
+                homeTotalPages = res.second
+                homePage = 1
             } catch (e: Exception) {
                 // Thu duong du phong phim hot o duoi
             }
@@ -217,11 +230,57 @@ class HomeFragment : Fragment() {
                 if (items.isNotEmpty()) {
                     tvLoadError.visibility = View.GONE
                     homeItems = items
-                    if (!searching) adapter.submit(items)
+                    if (!searching) {
+                        adapter.submit(items)
+                        btnLoadMore.visibility =
+                            if (homePage < homeTotalPages) View.VISIBLE
+                            else View.GONE
+                    }
                 } else if (homeItems.isEmpty()) {
                     tvLoadError.visibility = View.VISIBLE
                     tvLoadError.text =
                         "Chưa tải được phim. Kiểm tra kết nối mạng rồi vuốt xuống để thử lại nhé."
+                }
+            }
+        }
+    }
+
+    /** Nut "Tai them phim" o che do trang chu: tai trang tiep cua
+     * muc Moi cap nhat va noi vao cuoi danh sach (loc trung). */
+    private fun loadMoreHome() {
+        if (homeLoadingMore || searching || homePage >= homeTotalPages) return
+        homeLoadingMore = true
+        btnLoadMore.isEnabled = false
+        thread {
+            var page: SearchPage? = null
+            try {
+                page = HhSource.fetchListPage("/moi-cap-nhat", homePage + 1)
+            } catch (e: Exception) {
+                // Bao o duoi: giu nguyen danh sach
+            }
+            activity?.runOnUiThread {
+                homeLoadingMore = false
+                btnLoadMore.isEnabled = true
+                val p = page
+                if (p != null && p.movies.isNotEmpty()) {
+                    homePage++
+                    homeTotalPages = p.totalPages
+                    val known = HashSet<String>()
+                    homeItems.forEach {
+                        if (it is HomeItem.MovieItem) known.add(it.movie.url)
+                    }
+                    val fresh = p.movies.filter { known.add(it.url) }
+                    if (fresh.isNotEmpty()) {
+                        val merged = ArrayList(homeItems)
+                        fresh.forEach { merged.add(HomeItem.MovieItem(it)) }
+                        homeItems = merged
+                        if (!searching) adapter.submit(merged)
+                    }
+                }
+                if (!searching) {
+                    btnLoadMore.visibility =
+                        if (homePage < homeTotalPages) View.VISIBLE
+                        else View.GONE
                 }
             }
         }

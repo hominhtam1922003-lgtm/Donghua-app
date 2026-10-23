@@ -183,17 +183,20 @@ object HhSource {
      * Trang chu: 3 muc chinh cua web, tai SONG SONG (moi trang ~1 giay;
      * chay tuan tu se cham gap 3) + loc trung xuyen muc.
      */
-    fun fetchHomeSections(): List<HomeSection> {
+    fun fetchHomeSections(): Pair<List<HomeSection>, Int> {
         val defs = listOf(
             "Mới cập nhật" to "/moi-cap-nhat",
             "Xem nhiều" to "/top-xem-nhieu",
             "Hoàn thành" to "/hoan-thanh"
         )
         val raw = arrayOfNulls<List<Movie>>(defs.size)
+        val totals = IntArray(defs.size) { 1 }
         val threads = defs.mapIndexed { idx, def ->
             thread {
                 raw[idx] = try {
-                    fetchListPage(def.second, 1).movies
+                    val pg = fetchListPage(def.second, 1)
+                    totals[idx] = pg.totalPages
+                    pg.movies
                 } catch (e: Exception) {
                     emptyList()
                 }
@@ -207,7 +210,7 @@ object HhSource {
                 .filter { seen.add(it.url) }.take(18)
             if (fresh.isNotEmpty()) out.add(HomeSection(def.first, fresh))
         }
-        return out
+        return out to totals[0].coerceAtLeast(1)
     }
 
     // ---------------- Chi tiet + danh sach tap ----------------
