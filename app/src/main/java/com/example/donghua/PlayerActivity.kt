@@ -157,7 +157,7 @@ class PlayerActivity : AppCompatActivity() {
         })()
     """.trimIndent()
 
-    private enum class Kind { HLS, DIRECT, EMBEDPAGE }
+    private enum class Kind { HLS, DIRECT, EMBEDPAGE, WATCHPAGE }
     private data class Candidate(val kind: Kind, val url: String, val label: String = "")
 
     private lateinit var webView: WebView
@@ -371,8 +371,48 @@ class PlayerActivity : AppCompatActivity() {
                 playCandidate(0)
             }
             watchUrl.contains("/embed/") -> probeRuntime()
+            watchUrl.contains("/watch-") -> {
+                // Du phong cuoi (DetailActivity khong lay duoc nguon
+                // embed nao): phat bang CHINH trang xem cua web —
+                // player cua web nam san trong iframe cua no nen phat
+                // duoc; khung chinh bi khoa theo host cua web, popup
+                // quang cao bi cam, AdBlock chan o tang mang.
+                candidates = listOf(
+                    Candidate(
+                        Kind.WATCHPAGE, watchUrl,
+                        versionNameOf(watchUrl) ?: "Trang web"
+                    )
+                )
+                playCandidate(0)
+            }
             else -> showNoSource()
         }
+    }
+
+    /**
+     * Boc trang embed trong 1 iframe toan man hinh. BAT BUOC voi host
+     * phat streamfree cua hhkungfu: player cua no CHI cho phat khi
+     * trang embed nam ben trong iframe cua mot trang khac — mo thang
+     * trang embed o cap cao nhat se bi bao loi "video nay chi co the
+     * phat trong iframe (-2)" (loi da gap tren may that o ban 1.0).
+     * Base URL cua trang boc dat la goc web hhkungfu nen iframe thua
+     * huong dung ngu canh (Referer/origin) cua web goc.
+     */
+    private fun embedWrapperHtml(embedUrl: String): String {
+        val src = embedUrl.replace("&", "&amp;").replace("\"", "&quot;")
+        return """
+            <!DOCTYPE html>
+            <html><head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+            <style>
+              html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}
+              iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+            </style>
+            </head><body>
+            <iframe src="$src" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+            </body></html>
+        """.trimIndent()
     }
 
     /**
@@ -637,7 +677,13 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        probe.loadUrl(watchUrl)
+        // Nap trang embed QUA trang boc iframe (ly do o embedWrapperHtml):
+        // nap thang thi player cua host phat tu choi khoi tao, khong
+        // bao gio lo luong that ra tang mang.
+        probe.loadDataWithBaseURL(
+            HhSource.BASE + "/", embedWrapperHtml(watchUrl),
+            "text/html", "utf-8", null
+        )
         handler.postDelayed({ pollProbe() }, 2500)
         handler.postDelayed({ finishProbe() }, 50000)
     }
@@ -672,10 +718,26 @@ class PlayerActivity : AppCompatActivity() {
         progress.visibility = View.VISIBLE
         when (c.kind) {
             Kind.EMBEDPAGE -> {
-                // Phat bang trang embed chinh thuc cua web trong khung
-                // da khoa: cam popup (onCreateWindow), khoa khung chinh
-                // theo host trang phat (shouldOverrideUrlLoading dung
-                // targetHost), AdBlock o tang mang
+                // Phat trang embed cua web NHUNG boc trong iframe cua
+                // trang noi bo (xem embedWrapperHtml — mo thang trang
+                // embed se bi host phat bao loi -2). Iframe ke thua
+                // ngu canh web goc nho base URL; popup quang cao bi
+                // cam, AdBlock chan o tang mang.
+                targetHost = ""
+                webView.loadDataWithBaseURL(
+                    HhSource.BASE + "/", embedWrapperHtml(c.url),
+                    "text/html", "utf-8", null
+                )
+                // Cai lai co che an thanh ten phim sau khi trang on
+                // dinh (DOM cua trang embed co the dung lai muon)
+                chromeHandler.postDelayed({
+                    if (!isFinishing) webView.evaluateJavascript(CHROME_JS, null)
+                }, 2000)
+            }
+            Kind.WATCHPAGE -> {
+                // Trang xem chinh thuc cua web trong khung da khoa:
+                // khoa khung chinh theo host cua web (khong bi dan
+                // sang trang quang cao), cam popup, AdBlock tang mang
                 targetHost = hostOf(c.url)
                 webView.loadUrl(
                     c.url,
@@ -684,11 +746,6 @@ class PlayerActivity : AppCompatActivity() {
                         "Referer" to HhSource.BASE + "/"
                     )
                 )
-                // Cai lai co che an thanh ten phim sau khi trang on
-                // dinh (DOM cua trang embed co the dung lai muon)
-                chromeHandler.postDelayed({
-                    if (!isFinishing) webView.evaluateJavascript(CHROME_JS, null)
-                }, 2000)
             }
             Kind.HLS -> {
                 targetHost = ""
