@@ -1,8 +1,22 @@
 <resources>
-    <style name="Theme.TruyenReader" parent="Theme.Material3.DayNight">
-        <item name="colorPrimary">#5B4BDB</item>
+    <!-- Giao dien DEN dien anh (tu v1.0.2 theo yeu cau cua chu app):
+         nen gan nhu den tuyen, the phim xam dam vien mong, diem nhan
+         do phim (khop logo Tru Tien), chu trang/xam sang de doc. -->
+    <style name="Theme.TruyenReader" parent="Theme.Material3.Dark">
+        <item name="colorPrimary">#E50914</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">#FF8A00</item>
+        <item name="colorPrimaryContainer">#4A0D11</item>
+        <item name="colorOnPrimaryContainer">#FFD9DB</item>
+        <item name="colorSecondary">#F5C518</item>
+        <item name="colorOnSecondary">#000000</item>
+        <item name="colorSurface">#101014</item>
+        <item name="colorOnSurface">#F4F4F6</item>
+        <item name="colorSurfaceVariant">#1B1B21</item>
+        <item name="colorOnSurfaceVariant">#A8A8B3</item>
+        <item name="colorOutline">#2C2C34</item>
+        <item name="android:windowBackground">#060608</item>
+        <item name="android:statusBarColor">#060608</item>
+        <item name="android:navigationBarColor">#060608</item>
     </style>
 
     <style name="BottomTab">

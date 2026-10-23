@@ -4,8 +4,11 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="6dp"
+    app:cardBackgroundColor="#141419"
     app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    app:cardElevation="0dp"
+    app:strokeColor="#232329"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,8 +18,8 @@
 
         <ImageView
             android:id="@+id/ivCoverRow"
-            android:layout_width="54dp"
-            android:layout_height="74dp"
+            android:layout_width="56dp"
+            android:layout_height="84dp"
             android:scaleType="centerCrop"
             android:contentDescription="Ảnh bìa" />
 
