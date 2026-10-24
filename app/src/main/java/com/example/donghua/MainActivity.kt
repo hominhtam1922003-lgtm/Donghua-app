@@ -77,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         ensureNotificationPermission()
+        ensureBackgroundAllowed()
         scheduleNewEpisodeChecks()
         // Xac dinh ten mien nguon dang song (chong web doi ten mien)
         RemoteConfig.resolveAsync(applicationContext)
@@ -111,9 +112,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Kiem tra tap moi cho phim yeu thich moi 3 gio (chi khi co mang). */
+    /**
+     * Xin mien tru toi uu hoa pin (1 lan duy nhat): cong viec kiem
+     * tra tap moi chay nen bang WorkManager se bi mot so may tri
+     * hoan rat lau neu app bi toi uu pin. Nguoi dung da yeu cau cho
+     * phep chay nen nen mo thang man hinh he thong cho ho quyet.
+     */
+    fun ensureBackgroundAllowed() {
+        try {
+            val prefs = getSharedPreferences("app_flags", MODE_PRIVATE)
+            if (prefs.getBoolean("battery_asked", false)) return
+            prefs.edit().putBoolean("battery_asked", true).apply()
+            if (Build.VERSION.SDK_INT >= 23) {
+                val pm = getSystemService(
+                    android.os.PowerManager::class.java
+                )
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                    startActivity(
+                        android.content.Intent(
+                            android.provider.Settings
+                                .ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // May khong ho tro / da duoc mien tru: bo qua
+        }
+    }
+
+    /** Kiem tra tap moi moi 2 gio (chi khi co mang). */
     private fun scheduleNewEpisodeChecks() {
-        val request = PeriodicWorkRequestBuilder<NewEpisodeWorker>(3, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<NewEpisodeWorker>(2, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
             )
